@@ -1,0 +1,20 @@
+[project]
+name = "vc-search"
+version = "0.1.0"
+description = "Поисковый движок для vc.ru с поддержкой синонимов и опечаток"
+authors = [
+    {name = "5TEMIR", email = "stemir.pshenichnikov@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.25.0",
+    "beautifulsoup4>=4.9.0",
+    "lxml>=4.6.0",
+    "selenium>=4.15.0",
+    "webdriver-manager>=4.0.0"
+]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
