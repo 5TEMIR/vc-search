@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  elasticsearch:
+    image: elasticsearch:9.2.0
+    container_name: vc-es
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=false
+    ports:
+      - "9200:9200"
+    volumes:
+      - elastic_data:/usr/share/elasticsearch/data
+
+volumes:
+  elastic_data:

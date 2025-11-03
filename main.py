@@ -4,7 +4,6 @@ from vc_search.services.scraping_service import ScrapingService
 
 
 def main():
-    # Парсинг аргументов командной строки
     parser = argparse.ArgumentParser(description="VC.ru Scraper")
     parser.add_argument("--sections", nargs="+", help="Разделы для скрапинга")
     parser.add_argument("--articles", type=int, help="Количество статей на раздел")
@@ -16,7 +15,6 @@ def main():
 
     args = parser.parse_args()
 
-    # Создание конфигурации
     config = ScrapingConfig(
         sections=args.sections or DEFAULT_CONFIG.sections,
         articles_per_section=args.articles or DEFAULT_CONFIG.articles_per_section,
@@ -36,10 +34,8 @@ def main():
     try:
         service = ScrapingService(config)
 
-        # Запуск скрапинга
         stats = service.scrape_all_sections()
 
-        # Вывод итоговой статистики
         print(f"\n{'=' * 50}")
         print("ИТОГИ СКРАПИНГА:")
         print(f"  Всего собрано статей: {stats['total_articles']}")
@@ -49,7 +45,6 @@ def main():
             f"  Общее время: {stats['total_url_time'] + stats['total_parse_time']:.1f} сек"
         )
 
-        # Статистика по разделам
         print("\nСтатистика по разделам:")
         for section, section_stats in stats["section_stats"].items():
             print(

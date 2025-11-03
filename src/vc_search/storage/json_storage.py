@@ -1,5 +1,4 @@
 import json
-from datetime import datetime
 from pathlib import Path
 from typing import List
 
@@ -21,7 +20,6 @@ class JSONStorage:
 
         for i, article in enumerate(articles):
             try:
-                # Создаем имя файла на основе ID из URL
                 article_id = article.url.split("/")[-1].split("-")[0]
                 filename = f"{section}_{article_id}_{batch_num}_{i}.json"
                 filepath = self.articles_dir / filename
@@ -34,19 +32,3 @@ class JSONStorage:
                 print(f"Ошибка сохранения статьи {article.url}: {e}")
 
         return saved_count
-
-    def save_section_progress(
-        self, section: str, urls: List[str], articles: List[Article]
-    ):
-        """Сохраняет прогресс по разделу"""
-        progress_file = self.output_dir / f"{section}_progress.json"
-        progress_data = {
-            "section": section,
-            "total_urls": len(urls),
-            "parsed_articles": len(articles),
-            "last_update": datetime.now().isoformat(),
-            "urls": urls[:100],  # Сохраняем только первые 100 URL для отладки
-        }
-
-        with open(progress_file, "w", encoding="utf-8") as f:
-            json.dump(progress_data, f, ensure_ascii=False, indent=2)

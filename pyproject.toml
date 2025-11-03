@@ -1,6 +1,6 @@
 [project]
 name = "vc-search"
-version = "0.1.0"
+version = "0.2.0"
 description = "Поисковый движок для vc.ru с поддержкой синонимов и опечаток"
 authors = [
     {name = "5TEMIR", email = "stemir.pshenichnikov@gmail.com"}
@@ -12,7 +12,8 @@ dependencies = [
     "beautifulsoup4>=4.9.0",
     "lxml>=4.6.0",
     "selenium>=4.15.0",
-    "webdriver-manager>=4.0.0"
+    "webdriver-manager>=4.0.0",
+    "elasticsearch (>=9.2.0,<10.0.0)"
 ]
 
 [build-system]
