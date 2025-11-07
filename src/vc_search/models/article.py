@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
+import json
 
 
 @dataclass
@@ -23,3 +24,10 @@ class Article:
             "author": self.author,
             "section": self.section,
         }
+
+
+class ArticleJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Article):
+            return obj.to_dict()
+        return super().default(obj)

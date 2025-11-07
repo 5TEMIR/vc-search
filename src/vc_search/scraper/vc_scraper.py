@@ -130,7 +130,7 @@ class VCScraper:
                     self.driver.execute_script(
                         "window.scrollTo(0, document.body.scrollHeight);"
                     )
-                    time.sleep(0.5)
+                    time.sleep(0.2)
 
                 scroll_attempt += 1
 

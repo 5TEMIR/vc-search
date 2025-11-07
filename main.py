@@ -11,7 +11,9 @@ def main():
     parser.add_argument(
         "--no-headless", action="store_true", help="Запустить браузер в видимом режиме"
     )
-    parser.add_argument("--workers", type=int, help="Количество потоков для парсинга")
+    parser.add_argument(
+        "--batch-size", type=int, default=20, help="Размер батча для сохранения"
+    )
 
     args = parser.parse_args()
 
@@ -20,7 +22,6 @@ def main():
         articles_per_section=args.articles or DEFAULT_CONFIG.articles_per_section,
         delay=args.delay or DEFAULT_CONFIG.delay,
         headless=not args.no_headless,
-        max_workers=args.workers or DEFAULT_CONFIG.max_workers,
     )
 
     print("Конфигурация скрапинга:")
@@ -28,7 +29,6 @@ def main():
     print(f"  Статей на раздел: {config.articles_per_section}")
     print(f"  Задержка: {config.delay} сек")
     print(f"  Headless: {config.headless}")
-    print(f"  Потоков: {config.max_workers}")
 
     service = None
     try:

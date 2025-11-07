@@ -62,43 +62,54 @@ def show_stats(es):
 
 
 def interactive_search(es):
-    """Интерактивный поиск"""
+    """Интерактивный поиск с поддержкой опечаток"""
     print("\n" + "=" * 50)
-    print("🔍 ИНТЕРАКТИВНЫЙ ПОИСК")
+    print("🔍 ИНТЕРАКТИВНЫЙ ПОИСК С ОПЕЧАТОЧНИКОМ")
     print("=" * 50)
     print("Доступные команды:")
     print("  /stats - показать статистику")
     print("  /sections - показать разделы")
+    print("  /fuzzy <запрос> - поиск с исправлением опечаток")
+    print("  /smart <запрос> - умный поиск (автовыбор стратегии)")
     print("  /quit - выход")
 
     while True:
         try:
-            query = input("\nВведите поисковый запрос: ").strip()
+            user_input = input("\nВведите поисковый запрос или команду: ").strip()
 
-            if not query:
+            if not user_input:
                 continue
 
-            if query.lower() == "/quit":
+            if user_input.lower() == "/quit":
                 break
-            elif query.lower() == "/stats":
+            elif user_input.lower() == "/stats":
                 show_stats(es)
                 continue
-            elif query.lower() == "/sections":
+            elif user_input.lower() == "/sections":
                 stats = es.get_index_stats()
                 if stats.get("sections"):
                     print("\n📂 Разделы:")
                     for section in sorted(stats["sections"].keys()):
                         print(f"   {section}")
                 continue
-
-            print(f"Поиск: '{query}'...")
-            results = es.search(query, limit=5)
+            elif user_input.lower().startswith("/fuzzy "):
+                query = user_input[7:].strip()
+                print(f"🔍 Fuzzy поиск: '{query}'...")
+                results = es.search_with_fuzzy(query, limit=10)
+            elif user_input.lower().startswith("/smart "):
+                query = user_input[7:].strip()
+                print(f"🤖 Умный поиск: '{query}'...")
+                results = es.smart_search(query, limit=10)
+            else:
+                query = user_input
+                print(f"🔍 Обычный поиск: '{query}'...")
+                results = es.search(query, limit=10)
 
             print(f"\nНайдено: {results['total']} результатов ({results['took']}ms)")
 
             if not results["results"]:
                 print("❌ Ничего не найдено")
-                continue
+                return
 
             for i, hit in enumerate(results["results"], 1):
                 print(f"\n{i}. [{hit['section']}] {hit['title']}")
@@ -107,10 +118,9 @@ def interactive_search(es):
                 print(f"   🔗 {hit['url']}")
                 print(f"   📊 Score: {hit['score']:.3f} | Слов: {hit['word_count']}")
 
-                # Показываем подсветки
                 if hit.get("highlights"):
                     print("   💡 Совпадения:")
-                    for highlight in hit["highlights"][:2]:  # Максимум 2 подсветки
+                    for highlight in hit["highlights"][:2]:
                         print(f"      - {highlight}")
 
         except KeyboardInterrupt:

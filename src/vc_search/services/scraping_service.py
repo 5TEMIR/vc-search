@@ -2,84 +2,77 @@ import time
 from typing import List, Dict, Tuple
 from ..scraper.vc_scraper import VCScraper
 from ..storage.json_storage import JSONStorage
-from ..utils.parallel import process_parallel
+from ..models.article import Article
 from ..config import ScrapingConfig
 
 
 class ScrapingService:
     def __init__(self, config: ScrapingConfig):
-        self.config = config
+        self.sections = config.sections
+        self.articles_per_section = config.articles_per_section
+        self.delay = config.delay
+        self.batch_size = config.batch_size
         self.scraper = VCScraper(delay=config.delay, headless=config.headless)
         self.storage = JSONStorage()
 
     def scrape_section(self, section: str) -> Tuple[int, float, float]:
-        """Скрапит один раздел и возвращает (количество_статей, время_сбора_url, время_парсинга)"""
-        print(f"\nНачинаем раздел: {section.upper()}")
+        """Скрапит один раздел"""
+        print(f"\n🎯 Начинаем раздел: {section.upper()}")
 
         # Сбор URL
         start_time = time.time()
         urls = self.scraper.get_article_urls_from_section(
-            section, max_articles=self.config.articles_per_section
+            section, max_articles=self.articles_per_section
         )
         url_collection_time = time.time() - start_time
 
-        print(f"Найдено {len(urls)} уникальных статей за {url_collection_time:.1f} сек")
-
-        if not urls:
-            print(f"Пропускаем раздел {section} - нет статей")
-            return 0, url_collection_time, 0
-
-        # Парсинг статей
-        print(f"Парсинг {len(urls)} статей...")
-        start_parse_time = time.time()
-
-        articles = self._parse_articles_parallel(urls, section)
-        parse_time = time.time() - start_parse_time
-
-        # Сохранение результатов
-        if articles:
-            self._save_articles_batched(articles, section)
-
-        print(f"Раздел {section.upper()} завершен:")
-        print(f"Статей: {len(articles)}")
-        print(f"Время сбора URL: {url_collection_time:.1f} сек")
-        print(f"Время парсинга: {parse_time:.1f} сек")
-
-        return len(articles), url_collection_time, parse_time
-
-    def _parse_articles_parallel(self, urls: List[str], section: str) -> List:
-        """Параллельный парсинг статей"""
-
-        def parse_article_wrapper(url):
-            return self.scraper.parse_article(url, section)
-
-        articles, failed_urls = process_parallel(
-            items=urls,
-            process_func=parse_article_wrapper,
-            max_workers=self.config.max_workers,
-            timeout=self.config.timeout,
+        print(
+            f"📄 Найдено {len(urls)} уникальных статей за {url_collection_time:.1f} сек"
         )
 
-        if failed_urls:
-            print(f"Не удалось спарсить {len(failed_urls)} статей")
+        if not urls:
+            print(f"⏭️ Пропускаем раздел {section} - нет статей")
+            return 0, url_collection_time, 0
 
-        return articles
+        # Парсинг статей батчами
+        print(f"🔍 Парсинг {len(urls)} статей...")
+        start_parse_time = time.time()
+        total_parsed = 0
 
-    def _save_articles_batched(self, articles: List, section: str):
-        """Сохранение статей пачками"""
-        for batch_num, batch_start in enumerate(
-            range(0, len(articles), self.config.batch_size), 1
-        ):
-            batch_end = batch_start + self.config.batch_size
-            batch = articles[batch_start:batch_end]
+        for batch_start in range(0, len(urls), self.batch_size):
+            batch_end = batch_start + self.batch_size
+            batch_urls = urls[batch_start:batch_end]
 
-            saved_count = self.storage.save_articles_batch(batch, batch_num, section)
-            print(f"Пачка {batch_num}: сохранено {saved_count} статей")
+            batch_articles = []
+            for url in batch_urls:
+                article = self.scraper.parse_article(url, section)
+                if article:
+                    batch_articles.append(article)
 
-            print(f"Прогресс: {min(batch_end, len(articles))}/{len(articles)} статей")
+            # Сохраняем батч
+            saved_count = self.storage.save_articles_batch(batch_articles)
+            total_parsed += saved_count
+
+            print(
+                f"📦 Батч {batch_start // self.batch_size + 1}: "
+                f"спарсено {len(batch_articles)}, сохранено {saved_count}"
+            )
+            print(f"📊 Прогресс: {min(batch_end, len(urls))}/{len(urls)} статей")
+
+        parse_time = time.time() - start_parse_time
+
+        print(f"✅ Раздел {section.upper()} завершен:")
+        print(f"   Статей: {total_parsed}")
+        print(f"   Время сбора URL: {url_collection_time:.1f} сек")
+        print(f"   Время парсинга: {parse_time:.1f} сек")
+
+        return total_parsed, url_collection_time, parse_time
 
     def scrape_all_sections(self) -> Dict:
-        """Скрапит все разделы и возвращает статистику"""
+        """Скрапит все разделы"""
+        initial_count = self.storage.get_article_count()
+        print(f"📊 Начальное количество статей: {initial_count}")
+
         total_stats = {
             "total_articles": 0,
             "total_url_time": 0,
@@ -87,7 +80,7 @@ class ScrapingService:
             "section_stats": {},
         }
 
-        for section in self.config.sections:
+        for section in self.sections:
             try:
                 articles_count, url_time, parse_time = self.scrape_section(section)
 
@@ -101,8 +94,12 @@ class ScrapingService:
                 }
 
             except Exception as e:
-                print(f"Ошибка в разделе {section}: {e}")
+                print(f"❌ Ошибка в разделе {section}: {e}")
                 continue
+
+        final_count = self.storage.get_article_count()
+        print(f"📊 Финальное количество статей: {final_count}")
+        print(f"📈 Добавлено новых статей: {final_count - initial_count}")
 
         return total_stats
 

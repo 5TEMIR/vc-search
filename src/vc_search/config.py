@@ -6,10 +6,9 @@ from typing import List
 class ScrapingConfig:
     sections: List[str]
     articles_per_section: int = 500
-    delay: float = 0.1
+    delay: float = 0.01
     headless: bool = True
-    batch_size: int = 10
-    max_workers: int = 4
+    batch_size: int = 100
     timeout: int = 0.1
 
 
@@ -27,9 +26,8 @@ DEFAULT_CONFIG = ScrapingConfig(
         "links",
     ],
     articles_per_section=500,
-    delay=0.1,
+    delay=0.01,
     headless=True,
-    batch_size=10,
-    max_workers=4,
+    batch_size=100,
     timeout=0.1,
 )
