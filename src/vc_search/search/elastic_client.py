@@ -1,10 +1,12 @@
 import json
-from pathlib import Path
-from typing import List, Dict, Optional
+import logging
+import re
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +44,21 @@ class VCElasticSearch:
             "api, апи, интерфейс программирования приложений",
             "бизнес, бизнес, бинес",
             "компания, компания, кампания",
+            "трейдинг, торговля, инвестиции, биржа",
+            "сбермобайл, сбер мобайл, сбербанк мобайл",
+            "литрес, книги, литература, читалка",
+            "vr шлем, vr гарнитура, виртуальная реальность",
+            "зумеры, поколение z, молодёжь",
+            "эмпатия, сочувствие, понимание",
+            "sim карта, симка, сим-карта",
+            "роуминг, заграница, зарубежье",
+            "ии, искусственный интеллект, ai",
+            "нейросети, нейронные сети, neural networks",
+            "дизайн, оформление, интерфейс",
+            "интерьер, внутреннее убранство, обстановка",
+            "бизнес, компания, предприятие, стартап",
+            "зарплата, оплата труда, доход, заработок",
+            "ожидания, требования, запросы",
         ]
 
         index_body = {
@@ -428,3 +445,265 @@ class VCElasticSearch:
             "total": response["hits"]["total"]["value"],
             "took": response["took"],
         }
+
+    def _analyze_query_type(self, query: str) -> Dict[str, Any]:
+        """Анализирует тип запроса для выбора стратегии поиска"""
+        query_lower = query.lower()
+
+        analysis = {
+            "has_company": bool(
+                re.search(r"\b(сбер|телеграм|valve|apple|meta)\b", query_lower)
+            ),
+            "has_product": bool(
+                re.search(r"\b(шлем|подписка|карт|видео|интерьер)\b", query_lower)
+            ),
+            "has_year": bool(re.search(r"\b(2025|2024|2023)\b", query)),
+            "is_complex": len(query.split()) >= 3,
+            "specific_patterns": [],
+        }
+
+        # Определяем специфические паттерны
+        query_patterns = {
+            "трейдинг": {
+                "boost_terms": [
+                    "трейдинг",
+                    "трейдер",
+                    "торговля",
+                    "биржа",
+                    "инвестиции",
+                ]
+            },
+            "сбермобайл": {
+                "boost_terms": ["сбермобайл", "сбер мобайл", "сбербанк мобайл"],
+                "exact_match": True,
+            },
+            "литрес": {
+                "boost_terms": ["литрес", "книги", "подписка"],
+                "exact_match": True,
+            },
+            "vr шлем": {
+                "boost_terms": ["vr", "виртуальная реальность", "шлем", "гарнитура"]
+            },
+        }
+
+        for pattern, config in query_patterns.items():
+            if pattern in query_lower:
+                analysis["specific_patterns"].append(pattern)
+
+            return analysis
+
+    def improved_search(self, query: str, limit: int = 10) -> Dict:
+        """Улучшенный поиск с адаптивной стратегией"""
+        analysis = self._analyze_query_type(query)
+
+        # Выбираем стратегию поиска на основе анализа
+        if analysis["has_company"] and analysis["has_product"]:
+            return self._company_product_search(query, limit, analysis)
+        elif analysis["has_year"]:
+            return self._temporal_search(query, limit)
+        elif analysis["is_complex"]:
+            return self._complex_query_search(query, limit, analysis)
+        else:
+            return self._adaptive_fuzzy_search(query, limit, analysis)
+
+    def _company_product_search(self, query: str, limit: int, analysis: Dict) -> Dict:
+        """Поиск для запросов типа 'компания + продукт'"""
+        search_body = {
+            "size": limit,
+            "query": {
+                "bool": {
+                    "should": [
+                        # Точное совпадение всего запроса
+                        {
+                            "multi_match": {
+                                "query": query,
+                                "fields": ["title^5", "content^3", "author^1"],
+                                "type": "phrase",
+                                "boost": 3.0,
+                            }
+                        },
+                        # Поиск по отдельным значимым терминам
+                        {
+                            "bool": {
+                                "must": [
+                                    {
+                                        "multi_match": {
+                                            "query": self._extract_key_terms(query),
+                                            "fields": ["title^4", "content^2"],
+                                            "operator": "and",
+                                        }
+                                    }
+                                ]
+                            }
+                        },
+                        # Fuzzy поиск с более строгими настройками
+                        {
+                            "multi_match": {
+                                "query": query,
+                                "fields": ["title^3", "content^1.5"],
+                                "fuzziness": "1",
+                                "prefix_length": 2,
+                                "boost": 0.5,
+                            }
+                        },
+                    ]
+                }
+            },
+            "highlight": {
+                "pre_tags": ["<mark>"],
+                "post_tags": ["</mark>"],
+                "fields": {
+                    "title": {"number_of_fragments": 0},
+                    "content": {"fragment_size": 150, "number_of_fragments": 3},
+                },
+            },
+            "sort": [
+                {"_score": {"order": "desc"}},
+                {"published_date": {"order": "desc"}},
+            ],
+        }
+
+        return self._execute_search(search_body)
+
+    def _temporal_search(self, query: str, limit: int) -> Dict:
+        """Поиск для запросов с временными метками"""
+        year_match = re.search(r"\b(2025|2024|2023)\b", query)
+        if not year_match:
+            return self.smart_search(query, limit)
+
+        year = year_match.group(1)
+        query_without_year = re.sub(r"\b(2025|2024|2023)\b", "", query).strip()
+
+        search_body = {
+            "size": limit,
+            "query": {
+                "bool": {
+                    "must": [
+                        {
+                            "multi_match": {
+                                "query": query_without_year,
+                                "fields": ["title^4", "content^2", "author^1"],
+                                "operator": "and",
+                            }
+                        }
+                    ],
+                    "filter": [
+                        {
+                            "range": {
+                                "published_date": {
+                                    "gte": f"{year}-01-01",
+                                    "lte": f"{year}-12-31",
+                                }
+                            }
+                        }
+                    ],
+                }
+            },
+            "highlight": {
+                "pre_tags": ["<mark>"],
+                "post_tags": ["</mark>"],
+                "fields": {
+                    "title": {"number_of_fragments": 0},
+                    "content": {"fragment_size": 150, "number_of_fragments": 2},
+                },
+            },
+            "sort": [
+                {"_score": {"order": "desc"}},
+                {"published_date": {"order": "desc"}},
+            ],
+        }
+
+        return self._execute_search(search_body)
+
+    def _complex_query_search(self, query: str, limit: int, analysis: Dict) -> Dict:
+        """Поиск для сложных многословных запросов"""
+        terms = query.split()
+
+        # Разделяем запрос на основные компоненты
+        if len(terms) >= 3:
+            # Первые 2-3 слова - ядро запроса
+            core_query = " ".join(terms[:3])
+            additional_terms = terms[3:] if len(terms) > 3 else []
+        else:
+            core_query = query
+            additional_terms = []
+
+        search_body = {
+            "size": limit,
+            "query": {
+                "bool": {
+                    "must": [
+                        {
+                            "multi_match": {
+                                "query": core_query,
+                                "fields": ["title^4", "content^2"],
+                                "type": "best_fields",
+                                "minimum_should_match": "75%",
+                            }
+                        }
+                    ],
+                    "should": [
+                        # Буст для точного совпадения всего запроса
+                        {
+                            "multi_match": {
+                                "query": query,
+                                "fields": ["title^5", "content^3"],
+                                "type": "phrase",
+                                "boost": 2.0,
+                            }
+                        },
+                        # Буст для дополнительных терминов
+                        *[
+                            {"match": {"content": {"query": term, "boost": 0.5}}}
+                            for term in additional_terms
+                        ],
+                    ],
+                }
+            },
+            "highlight": {
+                "pre_tags": ["<mark>"],
+                "post_tags": ["</mark>"],
+                "fields": {
+                    "title": {"number_of_fragments": 0},
+                    "content": {"fragment_size": 150, "number_of_fragments": 3},
+                },
+            },
+            "sort": [
+                {"_score": {"order": "desc"}},
+                {"published_date": {"order": "desc"}},
+            ],
+        }
+
+        return self._execute_search(search_body)
+
+    def _adaptive_fuzzy_search(self, query: str, limit: int, analysis: Dict) -> Dict:
+        """Адаптивный fuzzy поиск"""
+        terms = query.split()
+
+        if len(terms) == 1:
+            # Одно слово - используем более агрессивный fuzzy
+            return self.search_with_fuzzy(
+                query, limit, fuzziness="AUTO", prefix_length=1
+            )
+        elif len(terms) == 2:
+            # Два слова - умеренный fuzzy
+            return self.search_with_fuzzy(query, limit, fuzziness="1", prefix_length=2)
+        else:
+            # Много слов - строгий fuzzy
+            return self.search_with_fuzzy(query, limit, fuzziness="1", prefix_length=3)
+
+    def _extract_key_terms(self, query: str) -> str:
+        """Извлекает ключевые термины из запроса"""
+        # Убираем стоп-слова и выделяем значимые термины
+        stop_words = {"в", "для", "и", "или", "на", "с", "по", "о", "об"}
+        terms = [term for term in query.split() if term.lower() not in stop_words]
+        return " ".join(terms)
+
+    def _execute_search(self, search_body: Dict) -> Dict:
+        """Выполняет поисковый запрос"""
+        try:
+            response = self.client.search(index=self.index_name, body=search_body)
+            return self._format_search_results(response)
+        except Exception as e:
+            logger.error(f"Ошибка улучшенного поиска: {e}")
+            return {"results": [], "total": 0, "took": 0}

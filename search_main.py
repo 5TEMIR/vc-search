@@ -71,6 +71,7 @@ def interactive_search(es):
     print("  /sections - показать разделы")
     print("  /fuzzy <запрос> - поиск с исправлением опечаток")
     print("  /smart <запрос> - умный поиск (автовыбор стратегии)")
+    print("  /improved <запрос> - улучшенный поиск (адаптивные стратегии)")
     print("  /quit - выход")
 
     while True:
@@ -100,6 +101,10 @@ def interactive_search(es):
                 query = user_input[7:].strip()
                 print(f"🤖 Умный поиск: '{query}'...")
                 results = es.smart_search(query, limit=10)
+            elif user_input.lower().startswith("/improved "):
+                query = user_input[10:].strip()
+                print(f"🚀 Улучшенный поиск: '{query}'...")
+                results = es.improved_search(query, limit=10)
             else:
                 query = user_input
                 print(f"🔍 Обычный поиск: '{query}'...")

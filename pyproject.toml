@@ -13,7 +13,8 @@ dependencies = [
     "lxml>=4.6.0",
     "selenium>=4.15.0",
     "webdriver-manager>=4.0.0",
-    "elasticsearch (>=9.2.0,<10.0.0)"
+    "elasticsearch (>=9.2.0,<10.0.0)",
+    "pandas (>=2.3.3,<3.0.0)"
 ]
 
 [build-system]
