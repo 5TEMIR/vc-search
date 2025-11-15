@@ -8,6 +8,8 @@ from typing import Any, Dict, List, Optional
 from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk
 
+from ..query_evaluation.relevance_model import RelevanceModel
+
 logger = logging.getLogger(__name__)
 
 
@@ -707,3 +709,89 @@ class VCElasticSearch:
         except Exception as e:
             logger.error(f"Ошибка улучшенного поиска: {e}")
             return {"results": [], "total": 0, "took": 0}
+
+    def search_with_relevance_model(
+        self, query: str, limit: int = 10, model_path: str = None
+    ) -> Dict:
+        """Поиск с использованием обученной модели релевантности"""
+        # Сначала выполняем обычный поиск
+        search_results = self.improved_search(
+            query, limit=limit * 2
+        )  # Берем больше результатов для фильтрации
+
+        if not search_results["results"]:
+            return search_results
+
+        # Проверяем, загружена ли модель и обучена ли она
+        if (
+            not hasattr(self, "relevance_model")
+            or self.relevance_model is None
+            or not self.relevance_model.is_trained
+        ):
+            if model_path and Path(model_path).exists():
+                try:
+                    self.relevance_model = RelevanceModel()
+                    self.relevance_model.load(model_path)
+                    logger.info(f"✅ Модель релевантности загружена из {model_path}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Не удалось загрузить модель: {e}")
+                    # Используем обычный поиск если модель не загружена
+                    search_results["results"] = search_results["results"][:limit]
+                    return search_results
+            else:
+                # Используем обычный поиск если модель не загружена
+                search_results["results"] = search_results["results"][:limit]
+                return search_results
+
+        # Подготавливаем данные для предсказания
+        queries = [query] * len(search_results["results"])
+        contents = [
+            result.get("content_preview", "")
+            + " "
+            + " ".join(result.get("highlights", []))
+            for result in search_results["results"]
+        ]
+
+        try:
+            # Предсказываем релевантность
+            predictions, probabilities = self.relevance_model.predict_batch(
+                queries, contents
+            )
+
+            # Добавляем предсказания к результатам
+            for i, result in enumerate(search_results["results"]):
+                result["relevance_prediction"] = predictions[i]
+                result["relevance_probability"] = probabilities[i]
+
+            # Сортируем по вероятности релевантности и берем топ-N
+            sorted_results = sorted(
+                search_results["results"],
+                key=lambda x: x["relevance_probability"],
+                reverse=True,
+            )[:limit]
+
+            # Обновляем результаты
+            search_results["results"] = sorted_results
+            search_results["total"] = len(sorted_results)
+
+        except Exception as e:
+            logger.warning(f"⚠️ Ошибка предсказания модели: {e}")
+            # В случае ошибки возвращаем обычные результаты
+            search_results["results"] = search_results["results"][:limit]
+
+        return search_results
+
+    def load_relevance_model(self, model_path: str):
+        """Загрузка модели релевантности"""
+        try:
+            if not Path(model_path).exists():
+                logger.warning(f"⚠️ Файл модели не найден: {model_path}")
+                return False
+
+            self.relevance_model = RelevanceModel()
+            self.relevance_model.load(model_path)
+            logger.info(f"✅ Модель релевантности загружена из {model_path}")
+            return True
+        except Exception as e:
+            logger.error(f"❌ Ошибка загрузки модели: {e}")
+            return False
