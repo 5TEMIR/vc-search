@@ -10,15 +10,15 @@ def analyze_marked_results(csv_file: str):
     df = pd.read_csv(csv_file)
 
     # Проверяем, размечены ли результаты
-    if df["relevance"].isna().all():
+    if df["relevance_score"].isna().all():
         print("❌ Результаты еще не размечены!")
         print(
-            "Заполните столбец 'relevance' значениями 1 (релевантно) или 0 (нерелевантно)"
+            "Заполните столбец 'relevance_score' значениями 1 (релевантно) или 0 (нерелевантно)"
         )
         return
 
     # Проверяем бинарные ли значения (0/1)
-    unique_values = df["relevance"].unique()
+    unique_values = df["relevance_score"].unique()
     if set(unique_values) - {0, 1}:
         print(
             "⚠️  Внимание: значения релевантности должны быть 0 или 1 для бинарных метрик"
@@ -29,9 +29,8 @@ def analyze_marked_results(csv_file: str):
 
     for query in df["query"].unique():
         query_results = df[df["query"] == query].copy()
-        query_results = query_results.sort_values("rank_position")
 
-        relevant_count = query_results["relevance"].sum()
+        relevant_count = query_results["relevance_score"].sum()
         total_count = len(query_results)
 
         # Вычисляем все метрики
@@ -99,7 +98,7 @@ def calculate_precision_at_k(results_df, k: int = 10) -> float:
     top_k = results_df.head(k)
     if len(top_k) == 0:
         return 0.0
-    return top_k["relevance"].sum() / len(top_k)
+    return top_k["relevance_score"].sum() / len(top_k)
 
 
 def calculate_ndcg_at_k(results_df, k: int = 10) -> float:
@@ -110,7 +109,7 @@ def calculate_ndcg_at_k(results_df, k: int = 10) -> float:
         return 0.0
 
     # Получаем релевантности для топ-K
-    relevances = top_k["relevance"].values
+    relevances = top_k["relevance_score"].values
 
     # Вычисляем DCG
     dcg = 0.0
@@ -139,7 +138,7 @@ def calculate_average_precision(results_df) -> float:
     relevant_positions = []
 
     for i, (idx, row) in enumerate(results_df.iterrows()):
-        if row["relevance"] == 1:
+        if row["relevance_score"] == 1:
             relevant_positions.append(i + 1)  # +1 потому что позиции начинаются с 1
 
     if not relevant_positions:
@@ -157,7 +156,7 @@ def calculate_average_precision(results_df) -> float:
 def calculate_mrr(results_df) -> float:
     """Вычисляет Mean Reciprocal Rank"""
     for i, (idx, row) in enumerate(results_df.iterrows()):
-        if row["relevance"] == 1:
+        if row["relevance_score"] == 1:
             return 1.0 / (i + 1)  # +1 потому что позиции начинаются с 1
 
     return 0.0

@@ -1,6 +1,5 @@
 from vc_search.search.elastic_client import VCElasticSearch
 import logging
-import json
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -62,16 +61,15 @@ def show_stats(es):
 
 
 def interactive_search(es):
-    """Интерактивный поиск с поддержкой опечаток"""
+    """Интерактивный поиск"""
     print("\n" + "=" * 50)
-    print("🔍 ИНТЕРАКТИВНЫЙ ПОИСК С ОПЕЧАТОЧНИКОМ")
+    print("🔍 ИНТЕРАКТИВНЫЙ ПОИСК")
     print("=" * 50)
     print("Доступные команды:")
     print("  /stats - показать статистику")
     print("  /sections - показать разделы")
-    print("  /fuzzy <запрос> - поиск с исправлением опечаток")
-    print("  /smart <запрос> - умный поиск (автовыбор стратегии)")
-    print("  /improved <запрос> - улучшенный поиск (адаптивные стратегии)")
+    print("  /model <запрос> - поиск с использованием модели")
+    print("  /delete-index - удаление индекса")
     print("  /quit - выход")
 
     while True:
@@ -93,28 +91,30 @@ def interactive_search(es):
                     for section in sorted(stats["sections"].keys()):
                         print(f"   {section}")
                 continue
-            elif user_input.lower().startswith("/fuzzy "):
+            elif user_input.lower().startswith("/model "):
                 query = user_input[7:].strip()
-                print(f"🔍 Fuzzy поиск: '{query}'...")
-                results = es.search_with_fuzzy(query, limit=10)
-            elif user_input.lower().startswith("/smart "):
-                query = user_input[7:].strip()
-                print(f"🤖 Умный поиск: '{query}'...")
-                results = es.smart_search(query, limit=10)
-            elif user_input.lower().startswith("/improved "):
-                query = user_input[10:].strip()
-                print(f"🚀 Улучшенный поиск: '{query}'...")
-                results = es.improved_search(query, limit=10)
+                print(f"🤖 Поиск с использованием модели: '{query}'...")
+                model_path = "data/models/logistic_regression_0.2.pkl"
+                results = es.search_with_relevance_model(
+                    query,
+                    limit=10,
+                    model_path=model_path,
+                    threshold=0.4,
+                )
+            elif user_input.lower().startswith("/delete-index"):
+                es.delete_index()
+                print("Индекс удален")
+                break
             else:
                 query = user_input
-                print(f"🔍 Обычный поиск: '{query}'...")
+                print(f"🔍 Поиск: '{query}'...")
                 results = es.search(query, limit=10)
 
             print(f"\nНайдено: {results['total']} результатов ({results['took']}ms)")
 
             if not results["results"]:
                 print("❌ Ничего не найдено")
-                return
+                continue
 
             for i, hit in enumerate(results["results"], 1):
                 print(f"\n{i}. [{hit['section']}] {hit['title']}")
@@ -127,6 +127,13 @@ def interactive_search(es):
                     print("   💡 Совпадения:")
                     for highlight in hit["highlights"][:2]:
                         print(f"      - {highlight}")
+
+                if hit.get("relevance_probability") is not None:
+                    relevance_icon = "✅" if hit["relevance_prediction"] == 1 else "❌"
+                    print(
+                        f"   🤖 {relevance_icon} Модель: {hit['relevance_probability']:.3f} "
+                        f"(комбинированный: {hit.get('combined_score', 0):.3f})"
+                    )
 
         except KeyboardInterrupt:
             print("\n\nВыход...")
@@ -142,7 +149,6 @@ def main():
     if not es:
         return
 
-    # Проверяем есть ли уже данные
     stats = es.get_index_stats()
     if stats.get("doc_count", 0) == 0:
         print("\n📥 Индекс пустой, начинаем индексацию...")
@@ -150,10 +156,8 @@ def main():
     else:
         print(f"\n📊 В индексе уже есть {stats['doc_count']} статей")
 
-    # Показываем статистику
     show_stats(es)
 
-    # Запускаем интерактивный поиск
     interactive_search(es)
 
     print("\n✅ Поисковый движок завершил работу")

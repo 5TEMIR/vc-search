@@ -127,7 +127,7 @@ def main():
 
     # Пытаемся загрузить модель релевантности
     model_loaded = False
-    model_path = "../../../data/models/lr_model.pkl"
+    model_path = "../../../data/models/relevance_model.pkl"
 
     if Path(model_path).exists():
         try:

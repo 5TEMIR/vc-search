@@ -40,7 +40,7 @@ class QueryEvaluator:
 
             try:
                 # Используем improved_search из VCElasticSearch
-                search_results = self.es.improved_search(query, limit=results_per_query)
+                search_results = self.es.search(query, limit=results_per_query)
 
                 for i, result in enumerate(search_results["results"]):
                     # Получаем полный контент статьи по ID
